@@ -94,20 +94,12 @@ test.json:
 
 ## Checkpoints
 
-### Training
-
-To train the model, you need to download the pretrained [Florence-2 base model](https://huggingface.co/microsoft/Florence-2-base-ft/tree/main).  
+To train AMD with your own dataset, you need to download the pretrained [Florence-2 base model](https://huggingface.co/microsoft/Florence-2-base-ft/tree/main).  
 After downloading, place the `pytorch_model.bin` file into the `AMD/models/` directory.
 
-### Testing
+We also provide AMD weight files trained on specific domains. You can download them from the following links: [DGM4-Guardian](https://pan.baidu.com/s/1WRbqh8vMxNxvfZQl5eElIA?pwd=amd1), [MDSM-NYT](https://pan.baidu.com/s/1Ueu5J8e8xfUcUayGU21bqA?pwd=i9as), and [MDSM-Guardian](https://pan.baidu.com/s/14THHMUzeaCfq3HMGihcLpA?pwd=7f6x)  
 
-We provide fine-tuned AMD weight files for specific domains. You can download them from the following links:
-
-- [DGM4-Guardian](https://pan.baidu.com/s/1WRbqh8vMxNxvfZQl5eElIA?pwd=amd1)  
-- [MDSM-NYT](https://pan.baidu.com/s/1Ueu5J8e8xfUcUayGU21bqA?pwd=i9as)  
-- [MDSM-Guardian](https://pan.baidu.com/s/14THHMUzeaCfq3HMGihcLpA?pwd=7f6x)  
-
-After downloading, also place it into the `AMD/models/` directory.
+After downloading, place selected checkpoint file in the `AMD/models/` as well to complete the initialization of the model.
 
 
 ## Inference
