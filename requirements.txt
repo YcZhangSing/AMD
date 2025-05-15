@@ -149,4 +149,4 @@ wheel==0.43.0
 widgetsnbextension==4.0.11
 xxhash==3.4.1
 yarl==1.9.4
-# flash-attn==2.5.9.post1  # 安装好torch之后才能安装这个包
+flash-attn==2.5.9.post1  

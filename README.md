@@ -32,7 +32,7 @@ Alternatively, you can visit the [flash-attention releases page](https://github.
 
 ## Data
 
-Our dataset now is avaliable at [kaggle](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data).
+Our MDSM dataset now is avaliable at [kaggle](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
 
 You can also prepare your training or inference data like:
 
