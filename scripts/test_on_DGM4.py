@@ -1,4 +1,5 @@
 import logging
+import argparse
 import random
 import torch
 import torch.nn.functional as F
@@ -18,45 +19,7 @@ import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-GPU_nu = 0
-device = torch.device(f"cuda:{GPU_nu}" if torch.cuda.is_available() else "cpu")
-batch_size = 5  
-
-model_id = '/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/florence2-finetuning/zyc_ft_log/train_20250408_071945_DGM_GCN_regular_0P1/OP1_epoch_10' ##改进的代码配改进的model权值
-
-model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True).eval().cuda().to(device)
-processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-tokenizer = AutoTokenizer.from_pretrained("/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/bert-base-uncased")
-
-vals = [
-    "/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/DGM4/DGM_oriDistrib_domain_meta/usa_test.json",
-    "/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/DGM4/DGM_oriDistrib_domain_meta/bbc_test.json",
-    "/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/DGM4/DGM_oriDistrib_domain_meta/wash_test.json",
-    "/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/DGM4/DGM_oriDistrib_domain_meta/guardian_test.json",
-]
-
-
-options = [
-    "A. No.",
-    "B. Only face swap.",
-    "C. Only face attribute.",
-    "D. Only text swap.",
-    "E. Face swap and text swap.",
-    "F. Face attribute and text swap.",
-]
-vectorizer = TfidfVectorizer().fit(options)
-option_vectors = vectorizer.transform(options).toarray()
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Create DataLoader
-GPU_nu = torch.cuda.device_count()
-num_workers = 0  # Number of worker processes to use for data loading
-prefetch_factor = None  # Number of batches to prefetch
-
-def get_best_option(generated_texts, option_vectors):
+def get_best_option(generated_texts, option_vectors,vectorizer,options,option_labels,device):
     '''批量计算模型的输出对应哪一个选项
     输入是生成的多个文本，和固定选项的向量表示
     '''
@@ -85,7 +48,7 @@ def get_best_option(generated_texts, option_vectors):
     
     return best_options, best_similarities, best_multi_labels,pred_label
 
-def get_multi_label(answers):
+def get_multi_label(answers,device):
     # 初始化 multi_label 矩阵
     multi_label = torch.zeros([len(answers), 4], dtype=torch.long).to(device)
     
@@ -117,7 +80,7 @@ def get_multi_label(answers):
 
 
 # Function to run the model on an example
-def run_example(task_prompt, text_input, image):
+def run_example(task_prompt, text_input, image,model, processor,device):
     prompt = task_prompt + text_input
 
     # Ensure the image is in RGB mode
@@ -138,16 +101,8 @@ def run_example(task_prompt, text_input, image):
     return parsed_answer
 
 
-def collate_fn(batch):
 
-    #### DGM4的定义：
-    images, questions, answers, fake_words_lists, captions,fake_image_box = zip(*batch)
-    
-    inputs = processor(text=list(questions), images=list(images), return_tensors="pt", padding=True).to(device)
-    return inputs, answers,fake_words_lists,captions,fake_image_box
-
-
-def run_batch(inputs):
+def run_batch(inputs,model, processor):
     # 调用 modeling_florence2.py 中的generate
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
@@ -159,15 +114,7 @@ def run_batch(inputs):
     return generated_texts
 
 
-#---------------------------#
-option_labels = [
-    torch.tensor([0, 0, 0, 0]).to(device),
-    torch.tensor([1, -0.33, -0.33, -0.33]).to(device),
-    torch.tensor([-0.33, 1, -0.33, -0.33]).to(device),
-    torch.tensor([-0.33, -0.33, 1, -0.33]).to(device),
-    torch.tensor([0.5, -0.5, 0.5, -0.5]).to(device),
-    torch.tensor([-0.5, 0.5, 0.5, -0.5]).to(device),
-]
+
 
 def box_iou(boxes1, boxes2, test=False):
     '''
@@ -220,7 +167,7 @@ def parse_coordinates(text):
         # print('没有match')
         return torch.tensor([[0, 0, 0, 0]])
 
-def compute_token_acc(captions, pre_words, fake_text_pos_list):
+def compute_token_acc(captions, pre_words, fake_text_pos_list,tokenizer):
     """
     计算 token 级别的预测准确率（ACC）
     
@@ -288,7 +235,7 @@ def compute_token_acc(captions, pre_words, fake_text_pos_list):
 
 
 
-def evaluate_model(test_loader):
+def evaluate_model(test_loader, model, processor,device,option_vectors,vectorizer,options,option_labels,tokenizer):
 
     IOU_pred = []
     token_acc_list = []
@@ -341,10 +288,10 @@ def evaluate_model(test_loader):
                 
         
                 
-        real_multi_label, real_label_pos = get_multi_label(batch_answers)
+        real_multi_label, real_label_pos = get_multi_label(batch_answers,device)
         real_label = torch.ones(len(generated_texts), dtype=torch.long).to(device) 
         real_label[real_label_pos] = 0
-        best_options, _ ,best_multi_labels,pred_label = get_best_option(task_answers, option_vectors)
+        best_options, _ ,best_multi_labels,pred_label =  get_best_option(task_answers, option_vectors,vectorizer,options,option_labels,device)
         
         ##--reeal/fake---##
         cls_nums_all = val_item_count
@@ -353,7 +300,6 @@ def evaluate_model(test_loader):
         IOU, _ = box_iou(output_coords, true_coords.to(device), test=True)
 
         # IOU_pred.extend(IOU.cpu().tolist())
-        # 遍历 IOU 并检查是否为有效数字--改进，当IOU是有效数字，才会加入IOU_Pred
         for iou_value in IOU.cpu().tolist():
             if isinstance(iou_value, (int, float)) and not math.isnan(iou_value) and not math.isinf(iou_value):
                 IOU_pred.append(iou_value)
@@ -364,7 +310,7 @@ def evaluate_model(test_loader):
         ##-multi--##
         multi_label_meter.add(best_multi_labels, real_multi_label)
         ## token-acc ##
-        token_acc_list.append(compute_token_acc(captions,pred_words_list,fake_text_pos_list))
+        token_acc_list.append(compute_token_acc(captions,pred_words_list,fake_text_pos_list,tokenizer))
         
 
     IOU_score = sum(IOU_pred)/len(IOU_pred)
@@ -374,45 +320,93 @@ def evaluate_model(test_loader):
     MAP = multi_label_meter.value()[:3].mean()
     
 
-    return ACC_cls, cls_acc_all, cls_nums_all,IOU_score,MAP4,Token_ACC
+    return ACC_cls, cls_acc_all, cls_nums_all,IOU_score,MAP,Token_ACC
 
 
-output_file = os.path.join(model_id, f"domain_test_out_{timestamp}.txt")
-# 先定义 log_print 函数，使其可用于整个脚本
-def log_print(*args, **kwargs):
-    print(*args, **kwargs)  # 控制台输出
-    with open(output_file, "a") as flog:  # 以追加模式写入文件
-        print(*args, **kwargs, file=flog)
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate model on multiple datasets")
+    parser.add_argument("--GPU_nu", type=int, default=0, help="GPU number to use")
+    parser.add_argument("--model_id", type=str, required=True, help="Path to model checkpoint")
+    parser.add_argument("--batch_size", type=int, default=5, help="Batch size for evaluation")
+    parser.add_argument("--vals", nargs='+', required=True, help="List of validation JSON file paths")
+    parser.add_argument("--output_file", type=str, required=True, help="File to save evaluation logs")
+    parser.add_argument("--tokenizer", type=str, default='bert-base-uncased', help="Tokenizer pth")
+    args = parser.parse_args()
+
+    # Set device
+    device = torch.device(f"cuda:{args.GPU_nu}" if torch.cuda.is_available() else "cpu")
+
+    # Load model & processors
+    model = AutoModelForCausalLM.from_pretrained(args.model_id, trust_remote_code=True).eval().cuda().to(device)
+    processor = AutoProcessor.from_pretrained(args.model_id, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
+
+    # Fixed options & vectorizer
+    options = [
+        "A. No.",
+        "B. Only face swap.",
+        "C. Only face attribute.",
+        "D. Only text swap.",
+        "E. Face swap and text swap.",
+        "F. Face attribute and text swap.",
+    ]
+    
+    option_labels = [
+    torch.tensor([0, 0, 0, 0]).to(device),
+    torch.tensor([1, -0.33, -0.33, -0.33]).to(device),
+    torch.tensor([-0.33, 1, -0.33, -0.33]).to(device),
+    torch.tensor([-0.33, -0.33, 1, -0.33]).to(device),
+    torch.tensor([0.5, -0.5, 0.5, -0.5]).to(device),
+    torch.tensor([-0.5, 0.5, 0.5, -0.5]).to(device),
+    ]
+    vectorizer = TfidfVectorizer().fit(options)
+    option_vectors = vectorizer.transform(options).toarray()
+
+    # Logging setup
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    # Logging to file
+    def log_print(*args_, **kwargs_):
+        print(*args_, **kwargs_)
+        with open(args.output_file, "a") as flog:
+            print(*args_, **kwargs_, file=flog)
+    
+    def collate_fn(batch):
+
+        #### DGM4的定义：
+        images, questions, answers, fake_words_lists, captions,fake_image_box = zip(*batch)
         
-log_print(f'本次测试使用的权值 modelid_is {model_id},测试集使用比例是{test_rat}')  
+        inputs = processor(text=list(questions), images=list(images), return_tensors="pt", padding=True).to(device)
+        return inputs, answers,fake_words_lists,captions,fake_image_box
 
-for val_js in vals:
-    with open(val_js, "r") as f:
-        val_data = json.load(f)
-    test_dataset = OriDGM4Dataset(split="validation",data=val_data)
-    
-    
-    test_loader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    collate_fn=collate_fn,
-    num_workers=num_workers,
-    prefetch_factor=prefetch_factor,
-    )
+    log_print(f"test model_id is {args.model_id}")
 
-    # Run the evaluation
-    ACC_cls, cls_acc_all, cls_nums_all, MAP,IOU_score,Token_ACC = evaluate_model(test_loader)
+    for val_js in args.vals:
+        with open(val_js, "r") as f:
+            val_data = json.load(f)
 
-    log_print('#######<--record-->###########')
-    
-    log_print(f'在测试集：{val_js} 的性能如下：')
-    log_print(f"ACC_cls (Accuracy): {ACC_cls*100} (cls_acc_all: {cls_acc_all}, cls_nums_all: {cls_nums_all})")
-    log_print(f"MAP (Mean Average Precision): {MAP*100}")
-    log_print(f"IoUscore: {IOU_score*100}")
-    log_print(f"Token_Acc: {Token_ACC*100}")
-    
-    log_print('########<--record-->#########')
+        test_dataset = OriDGM4Dataset(split="validation", data=val_data)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=args.batch_size,
+            collate_fn=collate_fn,
+            num_workers=0,
+            prefetch_factor=None,
+        )
 
-    log_print("END############################################################################################")
+        ACC_cls, cls_acc_all, cls_nums_all, MAP, IOU_score, Token_ACC = evaluate_model(test_loader,model,processor,device,option_vectors,vectorizer,options,option_labels,tokenizer)
 
-print(f"日志已保存到 {output_file}")
+        log_print('#######<--record-->###########')
+        log_print(f"ACC_cls (Accuracy): {ACC_cls*100} (cls_acc_all: {cls_acc_all}, cls_nums_all: {cls_nums_all})")
+        log_print(f"MAP (Mean Average Precision): {MAP*100}")
+        log_print(f"IoUscore: {IOU_score*100}")
+        log_print(f"Token_Acc: {Token_ACC*100}")
+        log_print('########<--record-->#########')
+        log_print("END############################################################################################")
+
+    print(f"log at {args.output_file}")
+
+
+if __name__ == "__main__":
+    main()

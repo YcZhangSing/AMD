@@ -51,12 +51,26 @@ from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
+
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
     Seq2SeqLMOutput,
-    Seq2SeqModelOutput,
 )
+from transformers.utils import ModelOutput
+
+@dataclass
+class Seq2SeqModelOutput(ModelOutput):
+    last_hidden_state: torch.FloatTensor = None
+    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
+    decoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    decoder_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    cross_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    encoder_last_hidden_state: Optional[torch.FloatTensor] = None
+    encoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    encoder_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    classification_logits: Optional[torch.FloatTensor] = None
+    classification_logits_list: Optional[List[torch.FloatTensor]] = None
 
 
 if is_flash_attn_2_available():

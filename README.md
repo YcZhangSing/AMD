@@ -10,7 +10,7 @@ We propose MLLM-Driven Synthetic Multimodal (**MDSM**), a large scale,  semantic
 </a>
 
 
-And AMDxxxxxx
+And an Artifact-aware Manipulation Diagnosis framework (**AMD**) for the MDSM problem that synergizes artifact pre-perception encoding and manipulation-oriented reasoning to effectively adapt MLLMs for precise manipulation analysis is proposed.
 
 
 
@@ -92,31 +92,45 @@ test.json:
 ]
 ```
 
+## Checkpoints
+
+### Training
+
+To train the model, you need to download the pretrained [Florence-2 base model](https://huggingface.co/microsoft/Florence-2-base-ft/tree/main).  
+After downloading, place the `pytorch_model.bin` file into the `AMD/models/` directory.
+
+### Testing
+
+We provide fine-tuned AMD weight files for specific domains. You can download them from the following links:
+
+- [DGM4-Guardian](https://pan.baidu.com/s/1WRbqh8vMxNxvfZQl5eElIA?pwd=amd1)  
+- [MDSM-NYT](https://pan.baidu.com/s/1Ueu5J8e8xfUcUayGU21bqA?pwd=i9as)  
+- [MDSM-Guardian](https://pan.baidu.com/s/14THHMUzeaCfq3HMGihcLpA?pwd=7f6x)  
+
+After downloading, also place it into the `AMD/models/` directory.
+
+
 ## Inference
 
-We provide an example here
-
+Please run:
 ```shell
-cd evaluation/
-bash test.sh
+sh test.sh
 ```
-
-Please fill the MODEL_PATH, IMG_PATH, TEST_JSON with your real checkpoint path and data path.
 
 ## Training
+Please run:
 
 ```shell
-cd src/script/
-bash train.sh
+sh train.sh
 ```
-
+Please fill the MODEL_PATH, TRAIN_JS, and VAL_JS with your real checkpoint path and data path.
 
 
 
 ## 🗞️ News
 
 - **`2025-05-15`**: We release the [datasets](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) of the AMD (v1) model.
-- **`2025-05-15`**: We release the UI-R1 repository.
+- **`2025-05-15`**: We release the AMD repository.
 
 
 ## 🤝 Acknowledgements

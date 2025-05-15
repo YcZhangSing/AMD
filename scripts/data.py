@@ -25,19 +25,17 @@ import numpy as np
 import sys
 sys.path.append('/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/florence2-finetuning')
 from DatasetUtils import pre_caption
-##已经修改为适合本项目的样式了
 describles_answ = {}
 
 describe_temple = "The following are multiple choice questions about fake news detection. \n\nThe caption of news is: "
-#fka_owl orig# describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Is there any fake face or fake words in the news?\nA. Yes\nB. No\nThe answer is:"
 describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Is there any face swap/attribute or text_swap in the news?\nA. No.\nB. Only face swap.\nC. Only face attribute.\nD. Only text swap.\nE. Face swap and text swap.\nF. Face attribute and text swap.\nThe options is:"
 
 describles_answ['orig'] = "A. No."
 describles_answ['face_swap'] = "B. Only face swap." # [0, 1, 0, 0, 0, 0]
 describles_answ['face_attribute'] = "C. Only face attribute." #[0, 0, 1, 0, 0, 0]
 describles_answ['text_swap'] = "D. Only text swap."#[0, 0, 0, 1, 0, 0]
-describles_answ['face_swap&text_swap'] = "E. Face swap and text swap." #[0, 0, 0, 0, 1, 0]
-describles_answ['face_attribute&text_swap'] = "F. Face attribute and text swap."#[0, 0, 0, 0, 0, 1]
+describles_answ['face_swap&text_swap'] = "E. Both face swap and text swap." #[0, 0, 0, 0, 1, 0]
+describles_answ['face_attribute&text_swap'] = "F. Both face attribute and text swap."#[0, 0, 0, 0, 0, 1]
 
 face_locate = "If there is manipulation of a face, locate the most likely manipulated face in the image and append the results to your selected option.\nThe answer is:"
 face_text_locate = "If there is manipulation of a face, locate the most likely manipulated face in the image and append the results to your selected option. If there is text_swap, list all swapped words in the caption.\nThe answer is:"
@@ -378,10 +376,7 @@ class OriDGM4Dataset(Dataset):
                 fake_text_pos_list[i] = 1
 
 
-        # conversation = []
-        # conversation.append(
-        #     {"from": "human", "value": describe_temple + caption + describe_ques_latter})
-        # conversation.append({"from": "gpt", "value": describles_answ[label]})
+
         
         question = '<DGM4>'+describe_temple + caption + describe_ques_latter + face_text_locate
         answer = describles_answ[label]

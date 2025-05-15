@@ -1,0 +1,16 @@
+{"time":"2025-05-15T20:06:07.95029409+08:00","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2025-05-15T20:06:07.950332256+08:00","level":"INFO","msg":"created symlink","path":"/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/AMD/wandb/run-20250515_200607-88xwohcn/logs/debug-core.log"}
+{"time":"2025-05-15T20:06:08.224945172+08:00","level":"INFO","msg":"created new stream","id":"88xwohcn"}
+{"time":"2025-05-15T20:06:08.225018304+08:00","level":"INFO","msg":"stream: started","id":"88xwohcn"}
+{"time":"2025-05-15T20:06:08.225080896+08:00","level":"INFO","msg":"writer: Do: started","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:06:08.225269026+08:00","level":"INFO","msg":"handler: started","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:06:08.225288875+08:00","level":"INFO","msg":"sender: started","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:06:09.282350977+08:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-15T20:07:06.165360103+08:00","level":"INFO","msg":"stream: closing","id":"88xwohcn"}
+{"time":"2025-05-15T20:07:06.165398292+08:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-15T20:07:06.166244392+08:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-15T20:07:07.132713634+08:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-15T20:07:07.589711985+08:00","level":"INFO","msg":"handler: closed","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:07:07.589753368+08:00","level":"INFO","msg":"writer: Close: closed","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:07:07.58986595+08:00","level":"INFO","msg":"sender: closed","stream_id":"88xwohcn"}
+{"time":"2025-05-15T20:07:07.589877025+08:00","level":"INFO","msg":"stream: closed","id":"88xwohcn"}

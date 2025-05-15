@@ -3,7 +3,6 @@ import os
 import json
 import re
 from functools import partial
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 from datetime import datetime
 import friendlywords as fw
 import torch
@@ -21,8 +20,6 @@ import math
 
 import random
 import wandb
-## 使用wandb来管理模型训练日志
-## wandb: Currently logged in as: zycddl (yczhang). Use `wandb login --relogin` to force relogin
 from data import DocVQADataset, TheCauldronDataset, VQAInstructDataset,DGM4_Dataset
 from peft import LoraConfig, get_peft_model
 import numpy as np
@@ -33,31 +30,10 @@ from multilabel_metrics import AveragePrecisionMeter
 from torchvision.ops.boxes import box_area
 
 
-train_data = []
-val_data = []
-train_epoch = 11
-train_batch = 5
-regular_weight = 0.1
-random_seed = 12 
-os.environ['PYTHONHASHSEED'] = str(random_seed)
-
-train_domain = 'gurd'
-train_js = '/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/zycDGM4/domain_dataset_44w/guardian_dataset/meta_data/train.json'
-val_js = '/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/zycDGM4/domain_dataset_44w/guardian_dataset/meta_data/val.json'
-##<------不同训练域--------->
-
-
-florence_init_pth = '/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/microsoft_Florence_2_ForDGM4_LT32_AMD_GCN_Parral_regular'
-logged_task_name = f'florence2_MDSM_AMD_GNN_0.1+0.2regular{train_domain}' 
-train_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-local_train_name = f'{logged_task_name}_{train_time}' 
 
 def set_seed(seed, rank=0):
-    '''
-    set_seed函数要在train函数中调用
-    因为我们使用的是多卡训练，需要保证每个rank的随机种子都设置好
-    '''
-    seed = seed + rank  # 确保每个进程种子不同但可控
+
+    seed = seed + rank  
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -214,9 +190,6 @@ def get_multi_label(answers,device):
     
     return multi_label, real_label_pos
 
-
-
-
 def get_best_option(generated_texts, option_vectors,vectorizer,options,option_labels,device):
     '''批量计算模型的输出对应哪一个选项
     输入是生成的多个文本，和固定选项的向量表示
@@ -278,7 +251,6 @@ def parse_coordinates(text):
         return torch.tensor([[0, 0, 0, 0]])
 
 
-
 def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, processor, global_step, batch_size, max_val_item_count,option_vectors,vectorizer,options,option_labels):
 
     # Evaluation phase
@@ -294,14 +266,12 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
             for batch in tqdm(val_loader, desc=f"Evaluation on {val_name} at step {global_step}", position=rank):
                 inputs, batch_answers, fake_image_box = batch
                 val_item_count += len(inputs)
-                ## model是DistributedDataParallel包装后的类，并没有generate方法，如需调用，应该使用model.module调用基础模型后再调用generate()方法
                 generated_ids = model.module.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs["pixel_values"],
                     max_new_tokens=1024,
                     num_beams=3,
                 )
-                ###解析得到模型的文本输出
                 generated_texts = processor.batch_decode(generated_ids, skip_special_tokens=False)
                 
                 task_answers = []
@@ -317,7 +287,6 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
                         output_coords[i] = parse_coordinates(full_answer).to(device)
                         true_coords[i] = parse_coordinates(answers).to(device)
     
-                    # 将 output_coord 堆叠到 output_coords中
                     else:
                         task_answers.append(full_answer)
                         true_coords[i] = parse_coordinates(answers).to(device)
@@ -335,7 +304,6 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
                 ##-IoU--##
                 IOU, _ = box_iou(output_coords, true_coords.to(device), test=True)
                 
-                # 遍历 IOU 并检查是否为有效数字--改进，当IOU是有效数字，才会加入IOU_Pred
                 for iou_value in IOU.cpu().tolist():
                     if isinstance(iou_value, (int, float)) and not math.isnan(iou_value) and not math.isinf(iou_value):
                         IOU_pred.append(iou_value)
@@ -346,7 +314,6 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
                 ##-multi--##
                 multi_label_meter.add(best_multi_labels, real_multi_label)
                 
-                # 计算本进程的各项指标
                 local_ACC_cls = cls_acc_all / cls_nums_all
                 local_IOU_score = sum(IOU_pred)/len(IOU_pred)
                 local_MAP = multi_label_meter.value()[:3].mean().item()
@@ -354,19 +321,15 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
 
                 if val_item_count > max_val_item_count:
                     break
-        # 同步各进程计算的指标
         local_ACC_cls_tensor = torch.tensor(local_ACC_cls, device=device)
         local_IoU_score_tensor = torch.tensor(local_IOU_score, device=device)
         local_MAP_tensor = torch.tensor(local_MAP, device=device)
 
 
-        # 聚合指标到主进程
         ACC_cls = synchronize_metrics(local_ACC_cls_tensor, world_size)
         IoUscore = synchronize_metrics(local_IoU_score_tensor, world_size)
         MAP = synchronize_metrics(local_MAP_tensor, world_size)
 
-
-        # 打印和记录日志
         if dist.get_rank() == 0:
             print(f"Rank {rank} - Step {global_step} - ACC perform ({val_name}): {ACC_cls.item()}")
             wandb.log({
@@ -380,13 +343,17 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
 
 
 
-def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, epochs=10, lr=1e-6, eval_steps=10, run_name=None, max_val_item_count=1000):
+def train_model(rank, AMD_init_pth, train_js, val_js, world_size, dataset_name, batch_size=6, use_lora=False, epochs=10, lr=1e-6, eval_steps=10, run_name=None, max_val_item_count=1000, regular_weight=0.07, train_domain='NYT',random_seed=12):
     setup(rank, world_size)
     set_seed(random_seed, rank)
     device = torch.device(f"cuda:{rank}")
-    print(f'使用这些  {device}  设备开始训练')
+    train_data=[]
+    val_data=[]
     
-    # 实例化用于二分类损失计算的交叉熵损失函数
+    logged_task_name = f'AMD_test_{train_domain}' 
+    train_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    local_train_name = f'{logged_task_name}_{train_time}' 
+    
     criterion = torch.nn.CrossEntropyLoss() 
     
     if run_name is None:
@@ -428,7 +395,6 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
         })
 
     # Load the dataset based on the dataset_name argument
-    ## 为了实现多个数据集支持，验证集采用键值对的形式
     if dataset_name == "docvqa":
         train_dataset = DocVQADataset(split='train')
         val_datasets = {"docvqa": DocVQADataset(split='validation')}
@@ -445,10 +411,8 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
             "docvqa": DocVQADataset(split='validation')
         }
     elif dataset_name == 'DGM4':
-        # 加载训练集
         with open(train_js, "r") as f:
             train_data = json.load(f)
-        # 加载验证集
         with open(val_js, "r") as f:
             val_data = json.load(f)
             
@@ -459,20 +423,12 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
 
     # Load the model and processor
     model = AutoModelForCausalLM.from_pretrained(
-        florence_init_pth, trust_remote_code=True
+        AMD_init_pth, trust_remote_code=True
     ).to(device)
     processor = AutoProcessor.from_pretrained(
-        florence_init_pth, trust_remote_code=True
+        AMD_init_pth, trust_remote_code=True
     )
     
-    #  # 计算参数量
-    # total_params = sum(p.numel() for p in model.parameters())
-    # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
-    # print("<---------模型参数量计算------------>")
-    # print(f"Total Parameters: {total_params:,}")  # 添加千分符便于阅读
-    # print(f"Trainable Parameters: {trainable_params:,}")
-    # print("<---------模型参数量计算------------>")
 
     if use_lora:
         TARGET_MODULES = [
@@ -523,7 +479,6 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
         model.train()
         train_loss = 0
         LLM_loss = 0
-        ##loss_list归零初始化
         loss_list = []
         image_loss = 0
         text_loss = 0
@@ -550,70 +505,64 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
                 input_ids=input_ids, pixel_values=pixel_values, labels=labels
             )
             total_loss = outputs.loss
-            # 生成二分类标签
             Binary_lables = []
             for tt, label in enumerate(answers):
                 if label.startswith('A'):
-                    Binary_lables.append(1)  # 正样本
+                    Binary_lables.append(1)  
                 else:
-                    Binary_lables.append(0)  # 负样本
+                    Binary_lables.append(0)  
                     
-            # 转换为 PyTorch 张量
             Binary_lables = torch.tensor(Binary_lables, dtype=torch.long).to(device)
 
             logits_list = outputs.classification_logits_list
-            ### 这里loss_list列表的使用还可以优化，但是怕，如果不使用不同的变量名，会不会导致损失优化目标丢失？
             ### logits = [image_classification, text_classification,learnable_token_logits,output_coord,loss_regular]
             
             for i,logits in enumerate(logits_list):
                 if logits is not None:
                     if i == 0:
-                        temp_loss0 = criterion(logits,Binary_lables) # 计算二分类的二值交叉熵损失,image as query
+                        temp_loss0 = criterion(logits,Binary_lables) 
                         if torch.isnan(temp_loss0):
                             raise RuntimeError(f"❌ logits_list[{i}] 产生 NaN，二分类损失 temp_loss0 为 NaN")
-                        total_loss += 0.1*temp_loss0 ##给二分类加个权
+                        total_loss += 0.1*temp_loss0 
                         loss_list.append(temp_loss0)
                     if i == 1:
-                        temp_loss1 = criterion(logits,Binary_lables) # 计算二分类的二值交叉熵损失,image as query
+                        temp_loss1 = criterion(logits,Binary_lables) 
                         if torch.isnan(temp_loss1):
-                            raise RuntimeError(f"❌ logits_list[{i}] 产生 NaN，二分类损失 temp_loss1 为 NaN")
-                        total_loss += 0.1*temp_loss1 ##给二分类加个权
+                            raise RuntimeError(f"❌ logits_list[{i}]  temp_loss1 = NaN")
+                        total_loss += 0.1*temp_loss1 
                         loss_list.append(temp_loss1)
                     if i == 2:
-                        temp_loss2 = criterion(logits,Binary_lables) # 计算二分类的二值交叉熵损失,image as query
+                        temp_loss2 = criterion(logits,Binary_lables) 
                         if torch.isnan(temp_loss2):
-                            raise RuntimeError(f"❌ logits_list[{i}] 产生 NaN，二分类损失 temp_loss2 为 NaN")
-                        total_loss += 0.1*temp_loss2 ##给二分类加个权
+                            raise RuntimeError(f"❌ logits_list[{i}]  temp_loss2 = NaN")
+                        total_loss += 0.1*temp_loss2 
                         loss_list.append(temp_loss2)
                         
-                    if i == 3: ##这时是第四个返回，是output_coord
+                    if i == 3: ##utput_coord
                         output_coords = logits.to(device)
                         tensor_fake_image_box = torch.cat(fake_image_box, dim=0).reshape(len(fake_image_box), -1).to(device)
-                        loss_bbox, loss_giou = get_bbox_loss(output_coords, tensor_fake_image_box) ## output_coords是归一化后的坐标
+                        loss_bbox, loss_giou = get_bbox_loss(output_coords, tensor_fake_image_box) 
                         if torch.isnan(loss_bbox):
-                            raise RuntimeError(f"❌ logits_list[{i}] 产生 NaN，坐标损失 loss_bbox 为 NaN")
-                        total_loss += 0.1*(loss_bbox+loss_giou) ##给坐标损失加个权
+                            raise RuntimeError(f"❌ logits_list[{i}] loss_bbox = NaN")
+                        total_loss += 0.1*(loss_bbox+loss_giou) 
                         loss_list.append(loss_bbox)
                         loss_list.append(loss_giou)
                     
-                    if i == 4: ##这时是第五个返回，是loss_regular
+                    if i == 4: 
                         loss_regular = logits.to(device)
                         if torch.isnan(loss_regular):
-                            raise RuntimeError(f"❌ logits_list[{i}] 产生 NaN，regular损失 loss_regular 为 NaN")
+                            raise RuntimeError(f"❌ logits_list[{i}] loss_regular = NaN")
                         loss_regular = regular_weight * loss_regular
                         loss_list.append(loss_regular)
                         total_loss += loss_regular
-                        
-                # else:
-                #     print(f'Attention!! !!模型返回的logits[{i}]是None!!! ')
+
     
             total_loss.backward()
 
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-            # #[image_loss,text_loss,LearnableToken loss] logits_list的顺序
-            # # 消融时，记得调整下面的记录
+
             train_loss += total_loss.item()
             LLM_loss += outputs.loss.item()
             image_loss += loss_list[0].item()
@@ -681,28 +630,39 @@ def train_model(rank, world_size, dataset_name, batch_size=6, use_lora=False, ep
     cleanup()
 
 
-def main(time_label):
-    parser = argparse.ArgumentParser(description="Train Florence-2 model on specified dataset")
-    parser.add_argument("--dataset", type=str, default="DGM4", choices=["docvqa", "cauldron", "vqainstruct","DGM4"], help="Dataset to train on")
-    parser.add_argument("--batch-size", type=int, default=train_batch, help="Batch size for training") 
+def main():
+    parser = argparse.ArgumentParser(description="Train AMD model on specified dataset")
+    parser.add_argument("--AMD-init-pth", type=str, help="AMD model dir")
+    parser.add_argument("--dataset-type", type=str, default="DGM4", choices=["docvqa", "cauldron", "vqainstruct","DGM4"], help="Dataset to train on")
+    parser.add_argument("--batch-size", type=int, default=5, help="Batch size for training") 
     parser.add_argument("--use-lora", action='store_true', help="Use LoRA if this flag is passed")
-    parser.add_argument("--epochs", type=int, default=train_epoch, help="Number of epochs to train for")
+    parser.add_argument("--epochs", type=int, default=13, help="Number of epochs to train for")
     parser.add_argument("--lr", type=float, default=1e-6, help="Learning rate")
-    parser.add_argument("--eval-steps", type=int, default=1000, help="Number of steps between evaluations")
     parser.add_argument("--eval-steps", type=int, default=2000, help="Number of steps between evaluations") 
-    
-    parser.add_argument("--run-name", type=str, default=local_train_name, help="Run name for wandb")
+    parser.add_argument("--run-name", type=str, default='test', help="Run name for wandb")
     parser.add_argument("--max-val-item-count", type=int, default=2000, help="Maximum number of items to evaluate on during validation")
+    parser.add_argument("--regular-weight", type=int, default=2000, help="loss weight of L_TRP")
+    parser.add_argument("--train-js", type=str, default='./train.json', help="json file for train")
+    parser.add_argument("--val-js", type=str, default='./val.json', help="json file for val")
+    parser.add_argument("--train-domain", type=str, default='NYT', help="News domain of train data")
+    parser.add_argument("--seed", type=int, default=12, help="random seed, small is better")
+    
+    
+    
+    
+    
+    
+    
     args = parser.parse_args()
 
     world_size = torch.cuda.device_count()
     mp.spawn(
         train_model,
-        args=(world_size, args.dataset, args.batch_size, args.use_lora, args.epochs, args.lr, args.eval_steps, args.run_name, args.max_val_item_count),
+        args=(args.AMD_init_pth, args.train_js, args.val_js, world_size, args.dataset_type, args.batch_size, args.use_lora, args.epochs, args.lr, args.eval_steps, args.run_name, args.max_val_item_count, args.regular_weight, args.train_domain),
         nprocs=world_size,
         join=True
     )
 
 if __name__ == "__main__":
     
-    main(train_time)
+    main()
