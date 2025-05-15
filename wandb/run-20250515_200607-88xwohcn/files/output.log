@@ -1,4 +1,0 @@
-Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
-/mnt/da36552c-a636-46f9-9a37-676e692003a2/yuchen/condaEnvs/florence2/lib/python3.10/site-packages/transformers/optimization.py:588: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-Training Epoch 1/13:   0%|                                                                                                                                                  | 0/1956 [00:02<?, ?it/s]
