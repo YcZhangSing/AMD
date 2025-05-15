@@ -1,3 +1,4 @@
 *.safetensors
 nohup.out
 wandb/*
+__pycache__
