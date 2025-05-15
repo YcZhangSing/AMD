@@ -1,0 +1,3 @@
+from train_20250329_150839_regu12_DGM4_before1stForward
+
+AMD+reg1+regu2  train on DGM4-guardian
