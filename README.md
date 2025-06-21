@@ -1,6 +1,10 @@
 # **The Coherence Trap**: When MLLM-Crafted Narratives Exploit Manipulated Visual Contexts
 
-<font size=4><div align='center' > [[🤗 Datasets](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data)] </div></font>
+<font size=4><div align='center' > 
+    [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)    [\[🤗 Datasets\]](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) 
+     </div></font>
+
+
 
 ## 🔥 Overview
 
