@@ -12,7 +12,6 @@ python scripts/train.py \
     --AMD-init-pth "$MODEL_PTH" \
     --dataset DGM4 \
     --batch-size 5 \
-    --use-lora \
     --epochs 13 \
     --lr 1e-6 \
     --eval-steps 2000 \
