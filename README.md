@@ -2,8 +2,32 @@
 
 <font size=4><div align='center' > 
     [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)    [\[🤗 Datasets\]](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) 
-     </div></font>
+</div></font>
 
+---
+
+<div align="center">
+
+### Authors
+
+<span style="color:blue">**Yuchen Zhang**</span><sup>1</sup>,  
+<span style="color:blue">**Yaxiong Wang**</span><sup>2</sup>,  
+<span style="color:blue">**Yujiao Wu**</span><sup>3</sup>,  
+<span style="color:blue">**Lianwei Wu**</span><sup>4</sup>,  
+<span style="color:blue">**Li Zhu**</span><sup>1</sup>  
+
+---
+
+### Affiliations
+
+<sup>1</sup> *Xi’an Jiaotong University, Xi’an, Shaanxi Province, P.R. China*  
+<sup>2</sup> *Hefei University of Technology, Hefei, Anhui, P.R. China*  
+<sup>3</sup> *CSIRO, Canberra, Australia*  
+<sup>4</sup> *Northwestern Polytechnical University, Xi’an, Shaanxi Province, P.R. China*  
+
+📧 yczhang@stu.xjtu.edu.cn, wangyx15@stu.xjtu.edu.cn  
+
+</div>
 
 
 ## 🔥 Overview
