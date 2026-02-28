@@ -1,3 +1,4 @@
+# The Coherence Trap: When MLLM-Crafted Narratives Exploit Manipulated Visual Contexts
 
 <font size=4><div align='center' > 
     [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)   
@@ -130,6 +131,7 @@ Please fill the MODEL_PATH, TRAIN_JS, and VAL_JS with your real checkpoint path 
 
 ## 🗞️ News
 
+- **`2026-02-22`**: Our paper is accepted by CVPR 2026.
 - **`2025-05-15`**: We release the [datasets](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) of the AMD (v1) model.
 - **`2025-05-15`**: We release the AMD repository.
 
