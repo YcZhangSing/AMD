@@ -42,7 +42,8 @@ Alternatively, you can visit the [flash-attention releases page](https://github.
 
 ## Data
 
-Our MDSM dataset now is avaliable at [kaggle](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
+Our MDSM dataset is coming soon. And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
+
 
 You can also prepare your training or inference data like:
 
@@ -123,7 +124,6 @@ Please fill the MODEL_PATH, TRAIN_JS, and VAL_JS with your real checkpoint path 
 ## 🗞️ News
 
 - **`2026-02-22`**: Our paper is accepted by CVPR 2026.
-- **`2025-05-15`**: We release the [datasets](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) of the AMD (v1) model.
 - **`2025-05-15`**: We release the AMD repository.
 
 
