@@ -129,4 +129,4 @@ Please fill the MODEL_PATH, TRAIN_JS, and VAL_JS with your real checkpoint path 
 
 ## 🤝 Acknowledgements
 
-We sincerely thank projects [DGM4](https://github.com/rshaojimmy/MultiModal-DeepFake), [FKA-Owl](https://github.com/liuxuannan/FAK-Owl), and [Florence2](https://github.com/andimarafioti/florence2-finetuning) for providing their open-source resources.
+We sincerely thank projects [DGM4](https://github.com/rshaojimmy/MultiModal-DeepFake) and [Florence2](https://github.com/andimarafioti/florence2-finetuning) for providing their open-source resources.
