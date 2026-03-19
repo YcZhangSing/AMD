@@ -42,7 +42,7 @@ Alternatively, you can visit the [flash-attention releases page](https://github.
 
 ## Data
 
-Our MDSM dataset is avaliable at at [kaggle](www.kaggle.com/datasets/yczhangsing/mllm-driven-synthetic-multimodal-dataset-mdsm). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
+Our MDSM dataset is avaliable at at [kaggle](https://www.kaggle.com/datasets/yczhangsing/mllm-driven-synthetic-multimodal-dataset-mdsm). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
 
 
 You can also prepare your training or inference data like:
