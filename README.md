@@ -40,6 +40,7 @@ pip install -U flash-attn --no-build-isolation
 
 Alternatively, you can visit the [flash-attention releases page](https://github.com/Dao-AILab/flash-attention/releases) to find the version compatible with your environment and follow the installation instructions provided there.
 
+
 ## Data
 
 Our MDSM dataset is avaliable at at [kaggle](https://www.kaggle.com/datasets/yczhangsing/mllm-driven-synthetic-multimodal-dataset-mdsm). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
@@ -102,6 +103,16 @@ test.json:
     },
 ]
 ```
+
+## Checkpoints
+
+To train AMD with your own dataset, you need to download the pretrained [Florence-2 base model](https://huggingface.co/microsoft/Florence-2-base-ft/tree/main).  
+After downloading, place the `pytorch_model.bin` file into the `AMD/models/` directory.
+
+We also provide AMD weight files trained on specific domains. You can download them from the following links: [DGM4-Guardian](https://pan.baidu.com/s/1WRbqh8vMxNxvfZQl5eElIA?pwd=amd1), [MDSM-NYT](https://pan.baidu.com/s/1Ueu5J8e8xfUcUayGU21bqA?pwd=i9as), and [MDSM-Guardian](https://pan.baidu.com/s/14THHMUzeaCfq3HMGihcLpA?pwd=7f6x)  
+
+After downloading, place selected checkpoint file in the `AMD/models/` as well to complete the initialization of the model.
+
 
 
 ## Inference
