@@ -43,6 +43,22 @@ face_text_locate = "If there is manipulation of a face, locate the most likely m
 describe_ques_latter_OB = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Is there any fake face or fake words in the news?\nA. No.\nB. Yes.\nThe options is:"
 
 
+def _to_loc_bin(coord, image_extent, bins=1000):
+    if image_extent <= 0:
+        return 0
+    size_per_bin = float(image_extent) / float(bins)
+    value = int(math.floor(float(coord) / size_per_bin))
+    return max(0, min(value, bins - 1))
+
+
+def _build_loc_tokens_from_xyxy(x1, y1, x2, y2, image_width, image_height):
+    loc_x1 = _to_loc_bin(x1, image_width)
+    loc_y1 = _to_loc_bin(y1, image_height)
+    loc_x2 = _to_loc_bin(x2, image_width)
+    loc_y2 = _to_loc_bin(y2, image_height)
+    return f"<loc_{loc_x1}><loc_{loc_y1}><loc_{loc_x2}><loc_{loc_y2}>"
+
+
 
 
 class DGM4_Dataset(Dataset):
@@ -196,15 +212,10 @@ class DGM4_Dataset(Dataset):
         answer = describles_answ[label]
         
         if has_bbox:
-            ## florence2返回的坐标是xyxy格式的 x1,y1,x2,y2 = 365.4,465.2,765.8,999.6
             x1,y1,x2,y2 = self.denormalize_fake_image_box_xyxy(fake_image_box,W,H)
-            # 保留两位小数，并插入到字符串模板中
             face_bbox_answer = (
                 "Manipulated face"
-                + f"<loc_{int(x1)}>"
-                + f"<loc_{int(y1)}>"
-                + f"<loc_{int(x2)}>"
-                + f"<loc_{int(y2)}>"
+                + _build_loc_tokens_from_xyxy(x1, y1, x2, y2, W, H)
             )
             answer += face_bbox_answer
         # conversation = '<DGM4>'+conversation
@@ -382,15 +393,10 @@ class OriDGM4Dataset(Dataset):
         answer = describles_answ[label]
         
         if has_bbox:
-            ## florence2返回的坐标是xyxy格式的 x1,y1,x2,y2 = 365.4,465.2,765.8,999.6
             x1,y1,x2,y2 = self.denormalize_fake_image_box_xyxy(fake_image_box,W,H)
-            # 保留两位小数，并插入到字符串模板中
             face_bbox_answer = (
                 "Manipulated face"
-                + f"<loc_{int(x1)}>"
-                + f"<loc_{int(y1)}>"
-                + f"<loc_{int(x2)}>"
-                + f"<loc_{int(y2)}>"
+                + _build_loc_tokens_from_xyxy(x1, y1, x2, y2, W, H)
                 + '.'
             )
             answer += face_bbox_answer
@@ -575,15 +581,10 @@ class APIinferDataset(Dataset):
         answer = describles_answ[label]
         
         if has_bbox:
-            ## florence2返回的坐标是xyxy格式的 x1,y1,x2,y2 = 365.4,465.2,765.8,999.6
             x1,y1,x2,y2 = self.denormalize_fake_image_box_xyxy(fake_image_box,W,H)
-            # 保留两位小数，并插入到字符串模板中
             face_bbox_answer = (
                 "Manipulated face"
-                + f"<loc_{int(x1)}>"
-                + f"<loc_{int(y1)}>"
-                + f"<loc_{int(x2)}>"
-                + f"<loc_{int(y2)}>"
+                + _build_loc_tokens_from_xyxy(x1, y1, x2, y2, W, H)
                 + '.'
             )
             answer += face_bbox_answer

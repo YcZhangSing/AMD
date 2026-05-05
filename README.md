@@ -4,10 +4,6 @@
     [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)   
 </div></font>
 
-<!-- <font size=4><div align='center' > 
-    [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)    [\[🤗 Datasets\]](https://www.kaggle.com/datasets/yaxiongwang/mdsm-dataset-under-review/data) 
-</div></font> -->
-
 ---
 
 
@@ -59,21 +55,7 @@ test.json:
         "image": "image1.jpg",
         "text": "your text1",
         "fake_cls": "orig",
-        "fake_image_box": [],
-        "mtcnn_boxes": [
-            [
-                113,
-                27,
-                208,
-                165
-            ],
-            [
-                436,
-                56,
-                491,
-                124
-            ]
-        ]
+        "fake_image_box": []
     },
     {
         "id": 236385,
@@ -85,20 +67,6 @@ test.json:
                 48,
                 145,
                 159
-        ],
-        "mtcnn_boxes": [
-            [
-                64,
-                48,
-                145,
-                159
-            ],
-            [
-                104,
-                180,
-                179,
-                285
-            ]
         ]
     },
 ]

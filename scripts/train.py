@@ -119,9 +119,10 @@ def collate_fn(batch, processor, device):
 
     #### DGM4的定义：
     images, questions, answers,fake_image_box = zip(*batch)
+    image_sizes = [(image.width, image.height) for image in images]
     
     inputs = processor(text=list(questions), images=list(images), return_tensors="pt", padding=True).to(device)
-    return inputs, answers,fake_image_box
+    return inputs, answers,fake_image_box,image_sizes
 
 
 def create_data_loaders(
@@ -231,24 +232,40 @@ def synchronize_metrics(metric_tensor, world_size):
     return metric_tensor
 
 
-def parse_coordinates(text):
-    # 使用正则表达式匹配坐标
+def parse_coordinates(text, image_size):
     pattern = r"<loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>"
     match = re.search(pattern, text)
-    # print(f'input text is {text}')
     
     if match:
-        # 将匹配到的坐标转换为整数
-        loc_x1 = int(match.group(1))
-        loc_y1 = int(match.group(2))
-        loc_x2 = int(match.group(3))
-        loc_y2 = int(match.group(4))
-        # print('解析到的坐标是：')
-        # print(loc_x1, loc_y1, loc_x2, loc_y2)
-        return torch.tensor([[loc_x1, loc_y1, loc_x2, loc_y2]])
+        image_width, image_height = image_size
+        loc_x1 = max(0, min(int(match.group(1)), 999))
+        loc_y1 = max(0, min(int(match.group(2)), 999))
+        loc_x2 = max(0, min(int(match.group(3)), 999))
+        loc_y2 = max(0, min(int(match.group(4)), 999))
+        x1 = (loc_x1 + 0.5) * image_width / 1000
+        y1 = (loc_y1 + 0.5) * image_height / 1000
+        x2 = (loc_x2 + 0.5) * image_width / 1000
+        y2 = (loc_y2 + 0.5) * image_height / 1000
+        return torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
     else:
-        print('没有match')
-        return torch.tensor([[0, 0, 0, 0]])
+        return torch.tensor([[0, 0, 0, 0]], dtype=torch.float32)
+
+
+def denormalize_fake_image_box_xyxy(fake_image_box, image_size):
+    image_width, image_height = image_size
+    box = torch.as_tensor(fake_image_box, dtype=torch.float32)
+    if box.numel() < 4 or torch.all(torch.abs(box[:4]) < 1e-6):
+        return torch.tensor([[0, 0, 0, 0]], dtype=torch.float32)
+    center_x, center_y, width, height = box[:4]
+    abs_center_x = center_x * image_width
+    abs_center_y = center_y * image_height
+    abs_width = width * image_width
+    abs_height = height * image_height
+    x1 = abs_center_x - abs_width / 2
+    y1 = abs_center_y - abs_height / 2
+    x2 = abs_center_x + abs_width / 2
+    y2 = abs_center_y + abs_height / 2
+    return torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
 
 
 def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, processor, global_step, batch_size, max_val_item_count,option_vectors,vectorizer,options,option_labels):
@@ -264,7 +281,7 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
             multi_label_meter = AveragePrecisionMeter(difficult_examples=False)
             multi_label_meter.reset()
             for batch in tqdm(val_loader, desc=f"Evaluation on {val_name} at step {global_step}", position=rank):
-                inputs, batch_answers, fake_image_box = batch
+                inputs, batch_answers, fake_image_box, image_sizes = batch
                 val_item_count += len(inputs)
                 generated_ids = model.module.generate(
                     input_ids=inputs["input_ids"],
@@ -278,18 +295,17 @@ def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, pro
                 output_coords = torch.zeros((len(generated_texts), 4)).to(device)
                 true_coords = torch.zeros((len(generated_texts), 4)).to(device)
                 
-                for i, (generated_text, answers) in enumerate(zip(generated_texts, batch_answers)):
+                for i, (generated_text, answers, fake_box, image_size) in enumerate(zip(generated_texts, batch_answers, fake_image_box, image_sizes)):
 
                     full_answer = re.sub(r"<pad>|<s>|</s>", "", generated_text)
+                    true_coords[i] = denormalize_fake_image_box_xyxy(fake_box, image_size).to(device)
                     
                     if '<loc_' in full_answer:
                         task_answers.append(full_answer.split('Manipulated face')[0])
-                        output_coords[i] = parse_coordinates(full_answer).to(device)
-                        true_coords[i] = parse_coordinates(answers).to(device)
+                        output_coords[i] = parse_coordinates(full_answer, image_size).to(device)
     
                     else:
                         task_answers.append(full_answer)
-                        true_coords[i] = parse_coordinates(answers).to(device)
                 
                 
                 real_multi_label, real_label_pos = get_multi_label(batch_answers,device)
@@ -487,7 +503,7 @@ def train_model(rank, AMD_init_pth, train_js, val_js, world_size, dataset_name, 
         for batch in tqdm(
             train_loader, desc=f"Training Epoch {epoch + 1}/{epochs}", position=rank
         ):
-            inputs, answers,fake_image_box = batch
+            inputs, answers,fake_image_box,image_sizes = batch
 
             # Prepare the input and target tensors
             input_ids = inputs["input_ids"].to(device)
