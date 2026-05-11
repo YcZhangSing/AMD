@@ -95,6 +95,18 @@ Please fill the MODEL_PATH, TRAIN_JS, and VAL_JS with your real checkpoint path 
 - **`2025-05-15`**: We release the AMD repository.
 
 
+## Citation
+
+If you find these useful for your research, please cite our paper:
+
+```bibtex
+@inproceedings{zhang2026coherence,
+  title     = {The Coherence Trap: When MLLM-Crafted Narratives Exploit Manipulated Visual Contexts},
+  author    = {Zhang, Yuchen and Wang, Yaxiong and Wu, Yujiao and Wu, Lianwei and Zhu, Li and Zheng, Zhedong},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year      = {2026}
+}
+
 ## 🤝 Acknowledgements
 
 We sincerely thank projects [DGM4](https://github.com/rshaojimmy/MultiModal-DeepFake) and [Florence2](https://github.com/andimarafioti/florence2-finetuning) for providing their open-source resources.
