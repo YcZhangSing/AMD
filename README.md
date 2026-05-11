@@ -106,6 +106,7 @@ If you find these useful for your research, please cite our paper:
   booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
   year      = {2026}
 }
+```
 
 ## 🤝 Acknowledgements
 
