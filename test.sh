@@ -7,7 +7,7 @@ GPU_NU=0
 MODEL_ID="/AMD/models"
 
 # Batch size for evaluation
-BATCH_SIZE=1
+BATCH_SIZE=40
 
 # List of validation JSON files (datasets to evaluate on)
 VALS=(

@@ -1,19 +1,15 @@
 # The Coherence Trap: When MLLM-Crafted Narratives Exploit Manipulated Visual Contexts
 
-<font size=4><div align='center' > 
-    [\[📄 Paper\]](https://arxiv.org/abs/2505.17476)   
-</div></font>
-
----
+<font size=4><div align='center'>[\[📄 Paper\]](https://arxiv.org/abs/2505.17476) &nbsp; [\[🗂️ Dataset\]](https://www.modelscope.cn/datasets/YcZhangSing/MDSM)</div></font>
 
 
 
 ## 🔥 Overview
+<a href="">
+  <img src="assets/CVPR26_AMDposter.jpeg" alt="Logo" >
+</a>
 
 We propose MLLM-Driven Synthetic Multimodal (**MDSM**), a large scale,  semantic-aligned multi-modal benchmark with  high-fidelity texts from MLLM, supporting fake news detecting and grounding tasks.
-<a href="">
-  <img src="assets/overview.png" alt="Logo" >
-</a>
 
 
 And an Artifact-aware Manipulation Diagnosis framework (**AMD**) for the MDSM problem that synergizes artifact pre-perception encoding and manipulation-oriented reasoning to effectively adapt MLLMs for precise manipulation analysis is proposed.
@@ -39,7 +35,7 @@ Alternatively, you can visit the [flash-attention releases page](https://github.
 
 ## Data
 
-Our MDSM dataset is avaliable at at [HERE](https://www.modelscope.cn/datasets/YcZhangSing/MDSM). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
+Our MDSM dataset is avaliable at at [kaggle](https://www.kaggle.com/datasets/yczhangsing/mllm-driven-synthetic-multimodal-dataset-mdsm). And the DGM4 dataset is avaliable at [DGM4](https://huggingface.co/datasets/rshaojimmy/DGM4)
 
 
 You can also prepare your training or inference data like:
@@ -107,6 +103,7 @@ If you find these useful for your research, please cite our paper:
   year      = {2026}
 }
 ```
+
 
 ## 🤝 Acknowledgements
 

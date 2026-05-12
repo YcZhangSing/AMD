@@ -65,13 +65,14 @@ class DGM4_Dataset(Dataset):
     '''在我们的类DGM4数据集上的dataset类
     '''
 
-    def __init__(self, split, data, max_words=30, image_res=224):
+    def __init__(self, split, data, max_words=30, image_res=224, image_root=""):
         self.name = "DGM4"
         
         self.data = data
         # self.transform = transform
         self.max_words = max_words
         self.image_res = image_res
+        self.image_root = os.path.abspath(os.path.expanduser(image_root)) if image_root else ""
 
         is_train = False
         if split == 'train':
@@ -121,17 +122,31 @@ class DGM4_Dataset(Dataset):
         # Round to two decimal places and return as a tuple
         return round(float(x1), 2), round(float(y1), 2), round(float(x2), 2), round(float(y2), 2)
 
+    def _resolve_image_path(self, img_path):
+        # Keep backward compatibility: try original path first.
+        candidates = [img_path]
+        if self.image_root and (not os.path.isabs(img_path)):
+            candidates.append(os.path.join(self.image_root, img_path))
+
+        for p in candidates:
+            if os.path.exists(p):
+                return p
+        return candidates[-1]
+
     def __getitem__(self, index):
 
         ann = self.data[index]
         label = ann['fake_cls']
         
         img_dir = ann['image']
-
-        image_dir_all = img_dir
+        image_dir_all = self._resolve_image_path(img_dir)
         
         try:
             image = Image.open(image_dir_all).convert('RGB')
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(
+                f"Image not found. ann['image']={img_dir}, resolved_path={image_dir_all}, image_root={self.image_root}"
+            ) from exc
         except Warning:
             raise ValueError("### Warning: fakenews_dataset Image.open")
 
@@ -572,11 +587,7 @@ class APIinferDataset(Dataset):
                 fake_text_pos_list[i] = 1
 
 
-        # conversation = []
-        # conversation.append(
-        #     {"from": "human", "value": describe_temple + caption + describe_ques_latter})
-        # conversation.append({"from": "gpt", "value": describles_answ[label]})
-        
+
         question = '<DGM4>'+describe_temple + caption + describe_ques_latter + face_text_locate
         answer = describles_answ[label]
         

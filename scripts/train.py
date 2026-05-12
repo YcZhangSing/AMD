@@ -1,5 +1,6 @@
 import argparse
 import os
+os.environ["WANDB_BASE_URL"] = "https://api.bandw.top"
 import json
 import re
 from functools import partial
@@ -181,12 +182,18 @@ def get_multi_label(answers,device):
     pos = [i for i, ans in enumerate(answers) if 'D. Only text swap.' in ans ]
     multi_label[pos, :] = torch.tensor([0, 0, 1, 0]).to(device)
     
-    # face_swap&text_swap cls = [1, 0, 1, 0]（精确匹配 'E. Face swap and text swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'E. Face swap and text swap.' in ans ]
+    # face_swap&text_swap cls = [1, 0, 1, 0]
+    pos = [
+        i for i, ans in enumerate(answers)
+        if ('E. Face swap and text swap.' in ans) or ('E. Both face swap and text swap.' in ans)
+    ]
     multi_label[pos, :] = torch.tensor([1, 0, 1, 0]).to(device)
     
-    # face_attribute&text_swap cls = [0, 1, 1, 0]（精确匹配 'F. Face attribute and text swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'F. Face attribute and text swap.' in ans ]
+    # face_attribute&text_swap cls = [0, 1, 1, 0]
+    pos = [
+        i for i, ans in enumerate(answers)
+        if ('F. Face attribute and text swap.' in ans) or ('F. Both face attribute and text swap.' in ans)
+    ]
     multi_label[pos, :] = torch.tensor([0, 1, 1, 0]).to(device)
     
     return multi_label, real_label_pos
@@ -268,93 +275,107 @@ def denormalize_fake_image_box_xyxy(fake_image_box, image_size):
     return torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
 
 
-def evaluate_model(rank, world_size, model, val_loaders, device, train_loss, processor, global_step, batch_size, max_val_item_count,option_vectors,vectorizer,options,option_labels):
+def evaluate_model(rank, world_size, model, val_loaders, device, processor, global_step, max_val_item_count, criterion, regular_weight):
 
-    # Evaluation phase
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         for val_name, val_loader in val_loaders.items():
             val_item_count = 0
-            cls_nums_all = 0
-            cls_acc_all = 0 
-            IOU_pred = []
-            multi_label_meter = AveragePrecisionMeter(difficult_examples=False)
-            multi_label_meter.reset()
+            # total, llm, image, text, learnable token, bbox, giou, regular
+            local_loss_sums = torch.zeros(8, dtype=torch.float32, device=device)
+            local_batch_count = torch.tensor(0.0, dtype=torch.float32, device=device)
+
             for batch in tqdm(val_loader, desc=f"Evaluation on {val_name} at step {global_step}", position=rank):
-                inputs, batch_answers, fake_image_box, image_sizes = batch
-                val_item_count += len(inputs)
-                generated_ids = model.module.generate(
-                    input_ids=inputs["input_ids"],
-                    pixel_values=inputs["pixel_values"],
-                    max_new_tokens=1024,
-                    num_beams=3,
+                inputs, answers, fake_image_box, _ = batch
+                val_item_count += len(answers)
+
+                input_ids = inputs["input_ids"].to(device)
+                pixel_values = inputs["pixel_values"].to(device)
+                labels = processor.tokenizer(
+                    text=answers,
+                    return_tensors="pt",
+                    padding=True,
+                    return_token_type_ids=False,
+                    truncation=True,
+                    max_length=800,
+                ).input_ids.to(device)
+
+                outputs = model(
+                    input_ids=input_ids, pixel_values=pixel_values, labels=labels
                 )
-                generated_texts = processor.batch_decode(generated_ids, skip_special_tokens=False)
-                
-                task_answers = []
-                output_coords = torch.zeros((len(generated_texts), 4)).to(device)
-                true_coords = torch.zeros((len(generated_texts), 4)).to(device)
-                
-                for i, (generated_text, answers, fake_box, image_size) in enumerate(zip(generated_texts, batch_answers, fake_image_box, image_sizes)):
+                total_loss = outputs.loss
 
-                    full_answer = re.sub(r"<pad>|<s>|</s>", "", generated_text)
-                    true_coords[i] = denormalize_fake_image_box_xyxy(fake_box, image_size).to(device)
-                    
-                    if '<loc_' in full_answer:
-                        task_answers.append(full_answer.split('Manipulated face')[0])
-                        output_coords[i] = parse_coordinates(full_answer, image_size).to(device)
-    
-                    else:
-                        task_answers.append(full_answer)
-                
-                
-                real_multi_label, real_label_pos = get_multi_label(batch_answers,device)
-                real_label = torch.ones(len(generated_texts), dtype=torch.long).to(device) 
-                real_label[real_label_pos] = 0
-                best_options, _ ,best_multi_labels,pred_label = get_best_option(task_answers, option_vectors,vectorizer,options,option_labels,device)
-                
-                ##--reeal/fake---##
-                cls_nums_all = val_item_count
-                cls_acc_all += torch.sum(real_label == pred_label).item()
-                
-                ##-IoU--##
-                IOU, _ = box_iou(output_coords, true_coords.to(device), test=True)
-                
-                for iou_value in IOU.cpu().tolist():
-                    if isinstance(iou_value, (int, float)) and not math.isnan(iou_value) and not math.isinf(iou_value):
-                        IOU_pred.append(iou_value)
-                    else:
-                        IOU_pred.append(0.0)
-                ######################################
-                            
-                ##-multi--##
-                multi_label_meter.add(best_multi_labels, real_multi_label)
-                
-                local_ACC_cls = cls_acc_all / cls_nums_all
-                local_IOU_score = sum(IOU_pred)/len(IOU_pred)
-                local_MAP = multi_label_meter.value()[:3].mean().item()
+                binary_labels = torch.tensor(
+                    [1 if label.startswith("A") else 0 for label in answers],
+                    dtype=torch.long,
+                    device=device,
+                )
 
+                image_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
+                text_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
+                learnable_token_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
+                bbox_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
+                giou_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
+                regular_loss = torch.tensor(0.0, dtype=torch.float32, device=device)
 
-                if val_item_count > max_val_item_count:
+                logits_list = outputs.classification_logits_list
+                for i, logits in enumerate(logits_list):
+                    if logits is None:
+                        continue
+                    if i == 0:
+                        image_loss = criterion(logits, binary_labels)
+                        total_loss += 0.1 * image_loss
+                    if i == 1:
+                        text_loss = criterion(logits, binary_labels)
+                        total_loss += 0.1 * text_loss
+                    if i == 2:
+                        learnable_token_loss = criterion(logits, binary_labels)
+                        total_loss += 0.1 * learnable_token_loss
+                    if i == 3:
+                        output_coords = logits.to(device)
+                        tensor_fake_image_box = torch.cat(fake_image_box, dim=0).reshape(len(fake_image_box), -1).to(device)
+                        bbox_loss, giou_loss = get_bbox_loss(output_coords, tensor_fake_image_box)
+                        total_loss += 0.1 * (bbox_loss + giou_loss)
+                    if i == 4:
+                        regular_loss = regular_weight * logits.to(device)
+                        total_loss += regular_loss
+
+                local_loss_sums += torch.stack(
+                    [
+                        total_loss.detach(),
+                        outputs.loss.detach(),
+                        image_loss.detach(),
+                        text_loss.detach(),
+                        learnable_token_loss.detach(),
+                        bbox_loss.detach(),
+                        giou_loss.detach(),
+                        regular_loss.detach(),
+                    ]
+                )
+                local_batch_count += 1
+
+                if val_item_count >= max_val_item_count:
                     break
-        local_ACC_cls_tensor = torch.tensor(local_ACC_cls, device=device)
-        local_IoU_score_tensor = torch.tensor(local_IOU_score, device=device)
-        local_MAP_tensor = torch.tensor(local_MAP, device=device)
 
+            dist.reduce(local_loss_sums, dst=0, op=dist.ReduceOp.SUM)
+            dist.reduce(local_batch_count, dst=0, op=dist.ReduceOp.SUM)
 
-        ACC_cls = synchronize_metrics(local_ACC_cls_tensor, world_size)
-        IoUscore = synchronize_metrics(local_IoU_score_tensor, world_size)
-        MAP = synchronize_metrics(local_MAP_tensor, world_size)
+            if dist.get_rank() == 0 and local_batch_count.item() > 0:
+                avg_loss = local_loss_sums / local_batch_count
+                wandb.log(
+                    {
+                        "step": global_step,
+                        f"{val_name}_val_total_loss": avg_loss[0].item(),
+                        f"{val_name}_val_llm_loss": avg_loss[1].item(),
+                        f"{val_name}_val_image_loss": avg_loss[2].item(),
+                        f"{val_name}_val_text_loss": avg_loss[3].item(),
+                        f"{val_name}_val_learnable_token_loss": avg_loss[4].item(),
+                        f"{val_name}_val_bbox_loss": avg_loss[5].item(),
+                        f"{val_name}_val_giou_loss": avg_loss[6].item(),
+                        f"{val_name}_val_regular_loss": avg_loss[7].item(),
+                    }
+                )
 
-        if dist.get_rank() == 0:
-            print(f"Rank {rank} - Step {global_step} - ACC perform ({val_name}): {ACC_cls.item()}")
-            wandb.log({
-                f"{val_name}_ACC_cls": ACC_cls.item(),
-                f"{val_name}_IoUscore": IoUscore.item(),
-                f"{val_name}_MAP": MAP.item(),
-                "step": global_step
-            })
-            
     model.train()
 
 
@@ -375,27 +396,33 @@ def train_model(rank, AMD_init_pth, train_js, val_js, world_size, dataset_name, 
     if run_name is None:
         run_name = fw.generate(2, separator="_")
 
-    option_labels = [
-    torch.tensor([0, 0, 0, 0]).to(device),
-    torch.tensor([1, -0.33, -0.33, -0.33]).to(device),
-    torch.tensor([-0.33, 1, -0.33, -0.33]).to(device),
-    torch.tensor([-0.33, -0.33, 1, -0.33]).to(device),
-    torch.tensor([0.5, -0.5, 0.5, -0.5]).to(device),
-    torch.tensor([-0.5, 0.5, 0.5, -0.5]).to(device),
-    ]
-    
-    options = [
-    "A. No.",
-    "B. Only face swap.",
-    "C. Only face attribute.",
-    "D. Only text swap.",
-    "E. Face swap and text swap.",
-    "F. Face attribute and text swap.",
-    ]
-    
-    vectorizer = TfidfVectorizer().fit(options)
-    option_vectors = vectorizer.transform(options).toarray()
-    
+    # Persist experiment settings under the current run directory (same level as epoch_* checkpoints).
+    out_put_prefix = './AMD_log'
+    run_root_dir = os.path.join(out_put_prefix, f"train_{train_time}")
+    if rank == 0:
+        os.makedirs(run_root_dir, exist_ok=True)
+        exp_settings_path = os.path.join(run_root_dir, "exp_settings.log")
+        with open(exp_settings_path, "a", encoding="utf-8") as f:
+            f.write("===== Training Launch =====\n")
+            f.write(f"start_time={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"run_name={run_name}\n")
+            f.write(f"logged_task_name={logged_task_name}\n")
+            f.write(f"dataset={dataset_name}\n")
+            f.write(f"train_domain={train_domain}\n")
+            f.write(f"AMD_init_pth={AMD_init_pth}\n")
+            f.write(f"train_js={train_js}\n")
+            f.write(f"val_js={val_js}\n")
+            f.write(f"batch_size={batch_size}\n")
+            f.write(f"epochs={epochs}\n")
+            f.write(f"lr={lr}\n")
+            f.write(f"eval_steps={eval_steps}\n")
+            f.write(f"max_val_item_count={max_val_item_count}\n")
+            f.write(f"regular_weight={regular_weight}\n")
+            f.write(f"random_seed={random_seed}\n")
+            f.write(f"world_size={world_size}\n")
+            f.write(f"cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES', '')}\n")
+            f.write("===========================\n")
+
     # Initialize wandb
     if rank == 0:  # Only initialize wandb in the main process
         wandb.init(project= logged_task_name, name=run_name)
@@ -591,22 +618,27 @@ def train_model(rank, AMD_init_pth, train_js, val_js, world_size, dataset_name, 
             
             
             if rank == 0:
-                wandb.log({"step": global_step + 1, "step_train_loss": total_loss.item()})
-                wandb.log({"step": global_step + 1, "step_avg_LLM_loss": outputs.loss.item()})
-                wandb.log({"step": global_step + 1, "step_avg_image_loss": loss_list[0].item()})
-                wandb.log({"step": global_step + 1, "step_avg_text_loss": loss_list[1].item()})
-                wandb.log({"step": global_step + 1, "step_avg_LearnableToken_loss": loss_list[2].item()})
-                wandb.log({"step": global_step + 1, "step_avg_bbox_loss": loss_list[3].item()})
-                wandb.log({"step": global_step + 1, "step_avg_giou_loss": loss_list[4].item()})
-                wandb.log({"step": global_step + 1, "step_avg_regular_loss": loss_list[5].item()})
+                wandb.log(
+                    {
+                        "step": global_step + 1,
+                        "step_train_loss": total_loss.item(),
+                        "step_avg_LLM_loss": outputs.loss.item(),
+                        "step_avg_image_loss": loss_list[0].item(),
+                        "step_avg_text_loss": loss_list[1].item(),
+                        "step_avg_LearnableToken_loss": loss_list[2].item(),
+                        "step_avg_bbox_loss": loss_list[3].item(),
+                        "step_avg_giou_loss": loss_list[4].item(),
+                        "step_avg_regular_loss": loss_list[5].item(),
+                    }
+                )
                 
             loss_list.clear()    
             global_step += 1
 
             if global_step % eval_steps == 0:
-                evaluate_model(rank, world_size, model, val_loaders, device, train_loss, processor, global_step, batch_size, max_val_item_count,option_vectors,vectorizer,options,option_labels)
+                evaluate_model(rank, world_size, model, val_loaders, device, processor, global_step, max_val_item_count, criterion, regular_weight)
 
-        evaluate_model(rank, world_size, model, val_loaders, device, train_loss, processor, global_step, batch_size, max_val_item_count,option_vectors,vectorizer,options,option_labels)
+        evaluate_model(rank, world_size, model, val_loaders, device, processor, global_step, max_val_item_count, criterion, regular_weight)
 
         # Log training loss to wandb
         avg_train_loss = train_loss / len(train_loader)
@@ -620,20 +652,24 @@ def train_model(rank, AMD_init_pth, train_js, val_js, world_size, dataset_name, 
     
         
         if rank == 0:
-            wandb.log({"epoch": epoch + 1, "epoch_train_loss": avg_train_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_LLM_loss": avg_LLM_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_image_loss": avg_image_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_text_loss": avg_text_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_LearnableToken_loss": avg_LT_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_bbox_loss": avg_bbox_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_giou_loss": avg_giou_loss})
-            wandb.log({"epoch": epoch + 1, "epoch_avg_regular_loss": avg_regular_loss})
+            wandb.log(
+                {
+                    "step": global_step,
+                    "epoch_train_loss": avg_train_loss,
+                    "epoch_avg_LLM_loss": avg_LLM_loss,
+                    "epoch_avg_image_loss": avg_image_loss,
+                    "epoch_avg_text_loss": avg_text_loss,
+                    "epoch_avg_LearnableToken_loss": avg_LT_loss,
+                    "epoch_avg_bbox_loss": avg_bbox_loss,
+                    "epoch_avg_giou_loss": avg_giou_loss,
+                    "epoch_avg_regular_loss": avg_regular_loss,
+                }
+            )
 
 
         # Save model checkpoint
         if rank == 0:  # Only the main process saves the checkpoint
-            out_put_prefix = './AMD_log'
-            output_dir = os.path.join(out_put_prefix,f"./train_{train_time}/epoch_{epoch+1}")
+            output_dir = os.path.join(run_root_dir, f"epoch_{epoch+1}")
             
             os.makedirs(output_dir, exist_ok=True)
             model.module.save_pretrained(output_dir)
@@ -657,7 +693,7 @@ def main():
     parser.add_argument("--eval-steps", type=int, default=2000, help="Number of steps between evaluations") 
     parser.add_argument("--run-name", type=str, default='test', help="Run name for wandb")
     parser.add_argument("--max-val-item-count", type=int, default=2000, help="Maximum number of items to evaluate on during validation")
-    parser.add_argument("--regular-weight", type=int, default=2000, help="loss weight of L_TRP")
+    parser.add_argument("--regular-weight", type=float, default=0.05, help="loss weight of L_TRP")
     parser.add_argument("--train-js", type=str, default='./train.json', help="json file for train")
     parser.add_argument("--val-js", type=str, default='./val.json', help="json file for val")
     parser.add_argument("--train-domain", type=str, default='NYT', help="News domain of train data")

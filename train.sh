@@ -17,7 +17,6 @@ python scripts/train.py \
     --eval-steps 2000 \
     --run-name "amd_train_run_$(date +%Y%m%d_%H%M)" \
     --max-val-item-count 2000 \
-    --regular-weight 2000 \
     --train-js "$TRAIN_JS" \
     --val-js "$VAL_JS" \
     --train-domain "NYT"\

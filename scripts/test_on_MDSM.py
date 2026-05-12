@@ -54,27 +54,27 @@ def get_multi_label(answers,device):
     multi_label = torch.zeros([len(answers), 4], dtype=torch.long).to(device)
     
     # 定义 real_label_pos（精确匹配 'A. No.'）
-    real_label_pos = [i for i, ans in enumerate(answers) if 'A. No.' in ans ]
+    real_label_pos = [i for i, ans in enumerate(answers) if 'A.' in ans ]
     multi_label[real_label_pos, :] = torch.tensor([0, 0, 0, 0]).to(device)
     
     # face_swap cls = [1, 0, 0, 0]（精确匹配 'B. Only face swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'B. Only face swap.' in ans ]
+    pos = [i for i, ans in enumerate(answers) if 'B.' in ans ]
     multi_label[pos, :] = torch.tensor([1, 0, 0, 0]).to(device)
     
     # face_attribute cls = [0, 1, 0, 0]（精确匹配 'C. Only face attribute.'）
-    pos = [i for i, ans in enumerate(answers) if 'C. Only face attribute.' in ans ]
+    pos = [i for i, ans in enumerate(answers) if 'C.' in ans ]
     multi_label[pos, :] = torch.tensor([0, 1, 0, 0]).to(device)
     
     # text_swap cls = [0, 0, 1, 0]（精确匹配 'D. Only text swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'D. Only text swap.' in ans ]
+    pos = [i for i, ans in enumerate(answers) if 'D.' in ans ]
     multi_label[pos, :] = torch.tensor([0, 0, 1, 0]).to(device)
     
     # face_swap&text_swap cls = [1, 0, 1, 0]（精确匹配 'E. Face swap and text swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'E. Face swap and text swap.' in ans ]
+    pos = [i for i, ans in enumerate(answers) if 'E.' in ans ]
     multi_label[pos, :] = torch.tensor([1, 0, 1, 0]).to(device)
     
     # face_attribute&text_swap cls = [0, 1, 1, 0]（精确匹配 'F. Face attribute and text swap.'）
-    pos = [i for i, ans in enumerate(answers) if 'F. Face attribute and text swap.' in ans ]
+    pos = [i for i, ans in enumerate(answers) if 'F.' in ans ]
     multi_label[pos, :] = torch.tensor([0, 1, 1, 0]).to(device)
     
     return multi_label, real_label_pos
@@ -234,6 +234,7 @@ def main():
     parser.add_argument('--model_id', type=str, required=True, help='Path to the model checkpoint')
     parser.add_argument('--batch_size', type=int, default=6, help='Batch size for DataLoader')
     parser.add_argument('--vals', type=str, nargs='+', required=True, help='List of validation JSON files')
+    parser.add_argument('--data_root', type=str, default='', help='Optional image root for relative ann[\"image\"] paths.')
     parser.add_argument('--output_file', type=str, default=None, help='Optional: output log file path')
     
     args = parser.parse_args()
@@ -266,15 +267,17 @@ def main():
 
     # Print test configuration
     log_print(f'Test model_id is: {args.model_id}')
+    if args.data_root:
+        log_print(f'Data root is: {args.data_root}')
 
     # Option setup (same)
     options = [
-        "A. No.",
-        "B. Only face swap.",
-        "C. Only face attribute.",
-        "D. Only text swap.",
-        "E. Face swap and text swap.",
-        "F. Face attribute and text swap.",
+    "A. No.",
+    "B. Only face swap.",
+    "C. Only face attribute.",
+    "D. Only text swap.",
+    "E. Both face swap and text swap.",
+    "F. Both face attribute and text swap.",
     ]
     
     option_labels = [
@@ -305,7 +308,7 @@ def main():
         log_print(f"Testing on: {val_js}")
         log_print(f"Validation data size: {len(val_data)}")
 
-        test_dataset = DGM4_Dataset(split="validation", data=val_data)
+        test_dataset = DGM4_Dataset(split="validation", data=val_data, image_root=args.data_root)
         test_loader = DataLoader(
             test_dataset,
             batch_size=args.batch_size,

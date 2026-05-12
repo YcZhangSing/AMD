@@ -73,6 +73,8 @@ class Seq2SeqModelOutput(ModelOutput):
 
 @dataclass
 class Seq2SeqLMOutput(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
     last_hidden_state: torch.FloatTensor = None
     past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
@@ -759,7 +761,22 @@ class Florence2LearnedPositionalEmbedding(nn.Embedding):
             past_key_values_length, past_key_values_length + seq_len, dtype=torch.long, device=self.weight.device
         ).expand(bsz, -1)
 
-        return super().forward(positions + self.offset)
+        # ======== 安全检查逻辑（仅增加，不修改原有逻辑）========
+        pos = positions + self.offset
+        max_index = self.num_embeddings - 1  # super() 初始化时已经包含 offset
+
+        # 检测是否越界 【临时使用】
+        if torch.any(pos >= max_index + 1):
+            # 打印警告信息（仅首次或间隔打印可减少日志压力）
+            print(f"[嵌入层越界检测：Florence2 PosEmbedding WARNING] position index overflow detected:")
+            print(f"  ├─ bsz={bsz}, seq_len={seq_len}, past_kv_len={past_key_values_length}")
+            print(f"  ├─ max valid index={max_index}, current max={pos.max().item()}")
+            print(f"  ├─ offending positions shape={pos.shape}")
+            # 截断处理：所有超出范围的索引设为最后一个合法index
+            pos = torch.clamp(pos, max=max_index)
+
+        # ========================================================
+        return super().forward(pos)
 
 
 class Florence2ScaledWordEmbedding(nn.Embedding):
@@ -2356,10 +2373,6 @@ class Florence2LanguageModel(Florence2LanguagePreTrainedModel):
             if first_forward:
                 first_forward = False
                 
-                #### 在第一次Forward之前加入正则化损失
-                init_learnable_token = inputs_embeds[:,577:577+self.learnable_tokens_len,:] ##[32,768]
-                loss_regular = self.orthogonal_loss(init_learnable_token)+ 0.2*(self.magnitude_loss(init_learnable_token))
-                
                 ## 冻结self.encoder的参数
                 for param in self.encoder.parameters():
                     param.requires_grad = False
@@ -2367,6 +2380,8 @@ class Florence2LanguageModel(Florence2LanguagePreTrainedModel):
                 batch_size = len(inputs_embeds)
                 # 扩展 learnable_tokens, 拼接 learnable_tokens_expanded 到 input_embeddings 的577图像嵌入之后
                 learnable_tokens_expanded = self.learnable_tokens.unsqueeze(0).expand(batch_size, -1, -1)  # [batch_size, 32, 768]
+                # 对真实的 learnable token 做正则，而不是对原始输入 embeddings 切片
+                loss_regular = self.orthogonal_loss(learnable_tokens_expanded) + 0.2 * self.magnitude_loss(learnable_tokens_expanded)
                 inputs_embeds = torch.cat((inputs_embeds[:, :577, :], learnable_tokens_expanded, inputs_embeds[:, 577:, :]), dim=1) ##图像嵌入（577）+learnable token（32）+文本嵌入（不定长）
                 # 扩展 attention_mask，添加 learnable_token 部分的有效掩码
                 learnable_token_mask = torch.ones(batch_size, self.learnable_tokens_len).to(attention_mask.device)  # [batch_size, learnable_tokens_len]

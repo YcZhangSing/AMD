@@ -1,4 +1,5 @@
 *.safetensors
+*.bin
 nohup.out
 wandb/*
 __pycache__.DS_Store
